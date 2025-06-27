@@ -16,31 +16,41 @@ def ProcessTheClient(connection,address):
 		rcv=""
 		while True:
 			try:
-				data = connection.recv(32)
-				if data:
-					#merubah input dari socket (berupa bytes) ke dalam string
-					#agar bisa mendeteksi \r\n
-					d = data.decode()
-					rcv=rcv+d
-					if rcv[-2:]=='\r\n':
-						#end of command, proses string
-						#logging.warning("data dari client: {}" . format(rcv))
-						hasil = httpserver.proses(rcv)
-						#hasil akan berupa bytes
-						#untuk bisa ditambahi dengan string, maka string harus di encode
-						hasil=hasil+"\r\n\r\n".encode()
-						#logging.warning("balas ke  client: {}" . format(hasil))
-						#hasil sudah dalam bentuk bytes
-						connection.sendall(hasil)
-						rcv=""
-						connection.close()
-						return
-				else:
+				data = connection.recv(1024)
+				if not data:
 					break
-			except OSError as e:
-				pass
+				rcv += data.decode()
+				if '\r\n\r\n' in rcv:
+						break
+			except OSError:
+				break
+
+		try:
+			header_part, body_part = rcv.split('\r\n\r\n', 1)
+		except ValueError:
+			connection.close()
+			return
+
+		headers = header_part.split('\r\n')
+		content_length = 0
+		for line in headers:
+			if line.lower().startswith("content-length:"):
+				content_length = int(line.split(":")[1].strip())
+
+		while len(body_part.encode()) < content_length:
+			try:
+				data = connection.recv(1024)
+				if not data:
+					break
+				body_part += data.decode()
+			except OSError:
+				break
+
+		full_request = header_part + '\r\n\r\n' + body_part
+		hasil = httpserver.proses(full_request)
+		hasil = hasil + b"\r\n\r\n"
+		connection.sendall(hasil)
 		connection.close()
-		return
 
 
 
@@ -71,4 +81,3 @@ def main():
 
 if __name__=="__main__":
 	main()
-
